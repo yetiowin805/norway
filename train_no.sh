@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Project and Account Information
+ACCOUNT_PROJECT="project_465001453"    # For SBATCH account and SCRATCH_DIR
+SIF_PROJECT="project_465000444"        # For Singularity Image File (SIF) path
+ACCOUNT_NAME="jiangtia"                 # Username for paths
+
+# Job Parameters with Default Values
+JOB_NAME="train_norwegian"
+TIME="1:00:00"
+NODES=1
+GPUS_PER_NODE=8
+CPUS_PER_TASK=8
+TRAINSET_SIZE=1000
+MODEL="NorwAI/NorwAI-Mistral-7B-instruct"
+MAX_RETRIES=100
+
+while getopts j:t:n:g:c:r:m: flag
+do
+    case "${flag}" in
+        j) JOB_NAME=${OPTARG};;       # Job name
+        t) TIME=${OPTARG};;           # Job time limit
+        n) NODES=${OPTARG};;          # Number of nodes
+        g) GPUS_PER_NODE=${OPTARG};;  # GPUs per node
+        c) CPUS_PER_TASK=${OPTARG};;  # CPUs per task
+        r) TRAINSET_SIZE=${OPTARG};;  # Training set size
+        m) MODEL=${OPTARG};;          # Model name
+    esac
+done
+
+sbatch <<EOT
+#!/bin/bash
+
+#SBATCH --job-name=$JOB_NAME
+#SBATCH --account=$ACCOUNT_PROJECT
+#SBATCH --time=$TIME
+#SBATCH --nodes=$NODES
+#SBATCH --gpus-per-node=$GPUS_PER_NODE
+#SBATCH --cpus-per-task=$CPUS_PER_TASK
+#SBATCH --mem=256G
+#SBATCH --partition=standard-g
+#SBATCH --output="train_norwegian_${MODEL//\//_}_%j.txt"
+
+module load LUMI PyTorch/2.2.0-rocm-5.6.1-python-3.10-singularity-20240315
+
+
+# Set the path to the Singularity image
+export SIF="/project/$SIF_PROJECT/EasyBuild/SW/container/PyTorch/2.2.0-rocm-5.6.1-python-3.10-singularity-20240315/lumi-pytorch-rocm-5.6.1-python-3.10-pytorch-v2.2.0-dockerhash-7392c9d4dcf7.sif"
+
+# Set Hugging Face token
+export HF_TOKEN="# Add your Hugging Face token here"
+
+# Define Scratch and Hugging Face directories
+export SCRATCH_DIR="/scratch/$ACCOUNT_PROJECT/$ACCOUNT_NAME"
+export HF_HOME="\$SCRATCH_DIR/huggingface"
+
+# Create cache directories if they don't exist
+mkdir -p "\$HF_HOME"
+
+# Export environment variables for Singularity
+export SINGULARITYENV_HF_HOME="\$HF_HOME"
+export SINGULARITYENV_HF_TOKEN="\$HF_TOKEN"
+
+singularity exec --cleanenv \$SIF pip install transformers
+singularity exec --cleanenv \$SIF pip install -U "huggingface_hub[cli]" torch==2.2.0+rocm5.6 torchvision==0.17.0+rocm5.6 \\
+  --index-url https://download.pytorch.org/whl/rocm5.6
+singularity exec --cleanenv \$SIF pip install accelerate evaluate sacrebleu sacremoses peft absl-py nltk bert_score
+
+export RDZV_HOST=\$(hostname)
+export RDZV_PORT=29500
+export NCCL_DEBUG=INFO
+export NCCL_DEBUG_SUBSYS=ALL
+
+RETRY_COUNT=0
+MAX_RETRIES=$MAX_RETRIES
+RETRY_WAIT=60  # Wait 60 seconds between retries
+
+while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
+    echo "Attempt \$((RETRY_COUNT + 1)) of \$MAX_RETRIES"
+
+    srun singularity exec --cleanenv --rocm --bind /users/$ACCOUNT_NAME/nor:/workspace/nor \\
+        \$SIF torchrun --nnodes=\$SLURM_NNODES --nproc_per_node=\$SLURM_GPUS_ON_NODE --rdzv_id=\$SLURM_JOB_ID \\
+        --rdzv_backend="c10d" --rdzv_endpoint="\$RDZV_HOST:\$RDZV_PORT" \\
+        train_no.py --train_size=$TRAINSET_SIZE --model=$MODEL
+
+    EXIT_CODE=\$?
+
+    if [ \$EXIT_CODE -eq 0 ]; then
+        echo "Job completed successfully"
+        exit 0
+    fi
+
+    RETRY_COUNT=\$((RETRY_COUNT + 1))
+
+    if [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; then
+        echo "Job failed with exit code \$EXIT_CODE. Waiting \$RETRY_WAIT seconds before retry \$RETRY_COUNT of \$MAX_RETRIES"
+        sleep \$RETRY_WAIT
+    else
+        echo "Job failed after \$MAX_RETRIES attempts"
+        exit 1
+    fi
+done
+EOT
