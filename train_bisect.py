@@ -18,6 +18,7 @@ from transformers import (
     TrainingArguments,
     Trainer,
     DataCollatorWithPadding,
+    PreTrainedTokenizer
 )
 
 
@@ -194,6 +195,8 @@ def run_training_pipeline(max_length: int = 320):
         backend="nccl", init_method="env://", timeout=timedelta(days=1)
     )
 
+    MAX_LENGTH = 320
+
     local_rank = int(os.environ["LOCAL_RANK"])
     torch.cuda.set_device(local_rank)
 
@@ -215,7 +218,7 @@ def run_training_pipeline(max_length: int = 320):
             learning_rate=2e-4,
             bf16=True,
             logging_steps=10,
-            evaluation_strategy="no",
+            eval_strategy="no",
             save_strategy="no",
             load_best_model_at_end=True,
             report_to="none",
@@ -226,7 +229,7 @@ def run_training_pipeline(max_length: int = 320):
 
         trainer = Trainer(
             model=model,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             args=training_args,
             train_dataset=prepared_dataset,
             data_collator=DataCollatorWithPadding(

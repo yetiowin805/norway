@@ -7,18 +7,21 @@ SIF_PROJECT="project_465001410"        # For Singularity Image File (SIF) path
 ACCOUNT_NAME="bungumla"                 # Username for paths
 
 # Job Parameters with Default Values
-JOB_NAME="train_norwegian"
-TIME="1:00:00"
-NODES=1
+JOB_NAME="train_bisect"
+TIME="8:00:00"
+NODES=2
 GPUS_PER_NODE=8
-CPUS_PER_TASK=1
-TRAINSET_SIZE=1000
+CPUS_PER_TASK=4
+EPOCHS=10
+TRAINSET_SIZE=5000
 MODEL="NorwAI/NorwAI-Mistral-7B-instruct"
 MAX_RETRIES=100
 
-while getopts j:t:n:g:c:r:m: flag
+
+while getopts e:j:t:n:g:c:r:m: flag
 do
     case "${flag}" in
+        e) EPOCHS=${OPTARG};;        # Epochs
         j) JOB_NAME=${OPTARG};;       # Job name
         t) TIME=${OPTARG};;           # Job time limit
         n) NODES=${OPTARG};;          # Number of nodes
@@ -40,7 +43,7 @@ sbatch <<EOT
 #SBATCH --cpus-per-task=$CPUS_PER_TASK
 #SBATCH --mem=256G
 #SBATCH --partition=standard-g
-#SBATCH --output="train_norwegian_${MODEL//\//_}_%j.txt"
+#SBATCH --output="train_bisect_${MODEL//\//_}_%j.txt"
 
 module load LUMI PyTorch/2.2.0-rocm-5.6.1-python-3.10-singularity-20240315
 
@@ -54,20 +57,29 @@ export HF_TOKEN="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"
 export SCRATCH_DIR="/scratch/$ACCOUNT_PROJECT/$ACCOUNT_NAME"
 export HF_HOME="\$SCRATCH_DIR/huggingface"
 
+# Define log dir for mlworks
+export LOG_DIR="/scratch/project_465001453/mlworks-logs/"
+
 # Create cache directories if they don't exist
 mkdir -p "\$HF_HOME"
 
 # Export environment variables for Singularity
 export SINGULARITYENV_HF_HOME="\$HF_HOME"
 export SINGULARITYENV_HF_TOKEN="\$HF_TOKEN"
+export SINGULARITYENV_LOG_DIR="\$LOG_DIR"
+export SINGULARITYENV_MLFLOW_TRACKING_URI="file:/\$LOG_DIR"
+export SINGULARITYENV_PYTORCH_DISABLE_FLASH_ATTENTION=1
 
 export SINGULARITY_WITH_VENV=1
+
+# Disabling flash attention due to ROCM error messages
+export PYTORCH_DISABLE_FLASH_ATTENTION=1
 
 singularity exec \$SIF bash -c '\$SINGULARITY_WITH_VENV; pip install transformers==4.46'
 
 singularity exec \$SIF bash -c '\$WITH_VENV; pip install -U "huggingface_hub[cli]" torch==2.2.0+rocm5.6 torchvision==0.17.0+rocm5.6 \\
   --index-url https://download.pytorch.org/whl/rocm5.6'
-singularity exec \$SIF bash -c '\$WITH_VENV; pip install accelerate evaluate sacrebleu sacremoses peft absl-py nltk bert_score'
+singularity exec \$SIF bash -c '\$WITH_VENV; pip install accelerate evaluate sacrebleu sacremoses peft absl-py nltk bert_score mlflow'
 
 singularity exec \$SIF bash -c '\$WITH_VENV; pip list'
 singularity exec \$SIF bash -c '\$WITH_VENV; python -m site'
@@ -88,10 +100,10 @@ while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
     srun singularity exec \
    --env PATH=/opt/miniconda3/envs/pytorch/bin:/user-software/venv/pytorch/bin:$PATH \
    --env PYTHONPATH=/opt/miniconda3/envs/pytorch/lib/python3.10/site-packages:/user-software/venv/pytorch/lib/python3.10/site-packages \
-   --cleanenv --rocm --bind /users/$ACCOUNT_NAME/corpora/nor:/workspace/nor \\
+   --cleanenv --rocm --bind /users/$ACCOUNT_NAME/git-projects/BiSECT:/workspace/BiSECT \\
         \$SIF torchrun --nnodes=\$SLURM_NNODES --nproc_per_node=\$SLURM_GPUS_ON_NODE --rdzv_id=\$SLURM_JOB_ID \\
         --rdzv_backend="c10d" --rdzv_endpoint="\$RDZV_HOST:\$RDZV_PORT" \\
-        train_no.py --train_size=$TRAINSET_SIZE --model=$MODEL
+        train_bisect_with_splits.py --train_size=$TRAINSET_SIZE --model=$MODEL --epochs=$EPOCHS
 
     EXIT_CODE=\$?
 

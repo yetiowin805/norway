@@ -1,8 +1,8 @@
 #!/bin/bash
 
-ACCOUNT_PROJECT=   # For SBATCH account and SCRATCH_DIR
-SIF_PROJECT=        # For Singularity Image File (SIF) path
-ACCOUNT_NAME=       # For LUMI account name
+ACCOUNT_PROJECT="project_465001453"    # For SBATCH account and SCRATCH_DIR
+SIF_PROJECT="project_465001410"        # For Singularity Image File (SIF) path
+ACCOUNT_NAME="bungumla"                 # Username for paths
 
 # Default values for job parameters
 JOB_NAME="train_desse"
@@ -45,7 +45,7 @@ sbatch <<EOT
 module load LUMI PyTorch/2.2.0-rocm-5.6.1-python-3.10-singularity-20240315
 
 # Set the path to the Singularity image
-export SIF="/project/$SIF_PROJECT/EasyBuild/SW/container/PyTorch/2.2.0-rocm-5.6.1-python-3.10-singularity-20240315/lumi-pytorch-rocm-5.6.1-python-3.10-pytorch-v2.2.0-dockerhash-7392c9d4dcf7.sif"
+export SIF="/project/$SIF_PROJECT/bungumla/EasyBuild/SW/container/PyTorch/2.2.0-rocm-5.6.1-python-3.10-singularity-20240315/lumi-pytorch-rocm-5.6.1-python-3.10-pytorch-v2.2.0-dockerhash-7392c9d4dcf7.sif"
 
 # Set Hugging Face token
 export HF_TOKEN=# Add your Hugging Face token here
@@ -61,10 +61,10 @@ export SINGULARITYENV_HF_HOME="\$HF_HOME"
 export SINGULARITYENV_HF_TOKEN="\$HF_TOKEN"
 
 # Install necessary dependencies inside the Singularity container
-singularity exec --cleanenv \$SIF pip install transformers
+singularity exec --cleanenv \$SIF pip install transformers==4.46
 singularity exec --cleanenv \$SIF pip install -U "huggingface_hub[cli]" torch==2.2.0+rocm5.6 torchvision==0.17.0+rocm5.6 \\
   --index-url https://download.pytorch.org/whl/rocm5.6
-singularity exec --cleanenv \$SIF pip install accelerate evaluate sacrebleu sacremoses peft absl-py nltk bert_score
+singularity exec --cleanenv \$SIF pip install accelerate evaluate sacrebleu sacremoses peft absl-py nltk bert_score mlflow datasets
 
 # Set environment variables for distributed training
 export RDZV_HOST=\$(hostname)
@@ -73,7 +73,7 @@ export NCCL_DEBUG=INFO
 export NCCL_DEBUG_SUBSYS=ALL
 
 # Run the training script using srun and torchrun
-srun singularity exec --cleanenv --rocm --bind /users/$ACCOUNT_NAME/DeSSE:/workspace/DeSSE \\
+srun singularity exec --cleanenv --rocm --bind /users/$ACCOUNT_NAME/git-projects/DeSSE:/workspace/DeSSE \\
     \$SIF torchrun --nnodes=\$SLURM_NNODES --nproc_per_node=\$SLURM_GPUS_ON_NODE --rdzv_id=\$SLURM_JOB_ID \\
     --rdzv_backend="c10d" --rdzv_endpoint="\$RDZV_HOST:\$RDZV_PORT" \\
     train_desse.py --train_size=$TRAINSET_SIZE --model=$MODEL
