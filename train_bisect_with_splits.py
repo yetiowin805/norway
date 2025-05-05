@@ -301,6 +301,10 @@ def run_training_pipeline(max_length: int = 320):
         mlflow.end_run()
 
         if dist.get_rank() == 0:
+            logging.info("Training completed, waiting for filesystem sync...")
+        time.sleep(10)  # Add delay for filesystem sync
+
+        if dist.get_rank() == 0:
             end_time = time.time()
             training_time = end_time - training_start_time
             total_time = end_time - start_time

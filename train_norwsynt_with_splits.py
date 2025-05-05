@@ -328,12 +328,9 @@ def run_training_pipeline(max_length: int = 320):
             logging.info("Training completed, waiting for filesystem sync...")
         time.sleep(10)  # Add delay for filesystem sync
         # Before proceeding to inference
-        if dist.get_rank() == 0:
-            logging.info("Verifying checkpoint directory permissions...")
-            os.system("ls -l /scratch/project_465001453/train/NorwSynt/")
-
-
-
+        # if dist.get_rank() == 0:
+        #     logging.info("Verifying checkpoint directory permissions...")
+        #     os.system("ls -l /scratch/project_465001453/train/NorwSynt/")
 
         if not args.skip_inference:
             # Get world size and rank
