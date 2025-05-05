@@ -44,11 +44,11 @@ sbatch <<EOT
 
 module load LUMI PyTorch/2.2.0-rocm-5.6.1-python-3.10-singularity-20240315
 
-# Set the path to the Singularity image
+# Set the path to the Singularity imageu
 export SIF="/project/$SIF_PROJECT/bungumla/EasyBuild/SW/container/PyTorch/2.2.0-rocm-5.6.1-python-3.10-singularity-20240315/lumi-pytorch-rocm-5.6.1-python-3.10-pytorch-v2.2.0-dockerhash-7392c9d4dcf7.sif"
 
 # Set Hugging Face token
-export HF_TOKEN="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"
+export HF_TOKEN="$HF_TOKEN"
 
 # Define Scratch and Hugging Face directories
 export SCRATCH_DIR="/scratch/$ACCOUNT_PROJECT/$ACCOUNT_NAME"

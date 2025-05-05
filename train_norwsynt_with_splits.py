@@ -332,6 +332,9 @@ def run_training_pipeline(max_length: int = 320):
             logging.info("Verifying checkpoint directory permissions...")
             os.system("ls -l /scratch/project_465001453/train/NorwSynt/")
 
+
+
+
         if not args.skip_inference:
             # Get world size and rank
             world_size = dist.get_world_size()
